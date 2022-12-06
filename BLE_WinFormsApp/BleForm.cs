@@ -1,7 +1,12 @@
+using System.Diagnostics;
+using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
 using Windows.Devices.Bluetooth;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Devices.Enumeration;
+using Windows.Storage.Streams;
 using Windows.UI.Core;
+using Windows.UI.Popups;
 
 namespace BLE_WinFormsApp
 {
@@ -13,6 +18,7 @@ namespace BLE_WinFormsApp
         BluetoothLEDevice bluetoothLeDevice;
         GattDeviceService service;
         GattCharacteristic characteristic;
+        object selectedListItem;
 
         public BleForm()
         {
@@ -44,9 +50,13 @@ namespace BLE_WinFormsApp
             // Start the watcher.
             deviceWatcher.Start();
         }
-        private void connectButton_Click(object sender, EventArgs e)
+        private async void connectButton_Click(object sender, EventArgs e)
         {
-
+            deviceWatcher.Stop();
+            // Note: BluetoothLEDevice.FromIdAsync must be called from a UI thread because it may prompt for consent.
+            deviceInformation = ((DeviceInformationListItem)selectedListItem).deviceInformation;
+            bluetoothLeDevice = await BluetoothLEDevice.FromIdAsync(deviceInformation.Id);
+            Debug.WriteLine($"Device connected: {bluetoothLeDevice.Name}");
         }
 
         private void DeviceWatcher_Removed(DeviceWatcher sender, DeviceInformationUpdate args)
@@ -62,6 +72,69 @@ namespace BLE_WinFormsApp
         private void DeviceWatcher_Added(DeviceWatcher sender, DeviceInformation args)
         {
             Invoke(() => listBox1.Items.Add(new DeviceInformationListItem(args)));
+        }
+
+        private void listBox1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            selectedListItem = listBox1.SelectedItem;
+            Debug.WriteLine(selectedListItem.ToString());
+        }
+
+        private async void listServicesButton_Click(object sender, EventArgs e)
+        {
+            listBox1.Items.Clear();
+            var services = await bluetoothLeDevice.GetGattServicesAsync();
+
+            foreach (GattDeviceService service in services.Services)
+            {
+                listBox1.Items.Add(new GattDeviceServiceListItem(service));
+                Debug.WriteLine($"Service UUID: {service.Uuid}");
+
+            }
+        }
+
+        private async void listCharactericsButton_Click(object sender, EventArgs e)
+        {
+            listBox1.Items.Clear();
+
+            service = ((GattDeviceServiceListItem)selectedListItem).service;
+            var characteristics = await service.GetCharacteristicsAsync();
+
+            foreach (GattCharacteristic characteristic in characteristics.Characteristics)
+            {
+                listBox1.Items.Add(new GattCharacteristicListItem(characteristic));
+                Debug.WriteLine($"Characteristic UUID: {characteristic.Uuid}");
+
+            }
+        }
+
+        private async void writeButton_Click(object sender, EventArgs e)
+        {
+            characteristic = ((GattCharacteristicListItem)selectedListItem).characteristic;
+            await characteristic.WriteValueAsync((Encoding.ASCII.GetBytes("1")).AsBuffer());
+        }
+
+        private async void registerNotifyButton_Click(object sender, EventArgs e)
+        {
+            characteristic = ((GattCharacteristicListItem)selectedListItem).characteristic;
+            characteristic.ValueChanged += Characteristic_ValueChanged;
+            await characteristic.WriteClientCharacteristicConfigurationDescriptorAsync(
+                     GattClientCharacteristicConfigurationDescriptorValue.Notify);
+        }
+
+        private void Characteristic_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
+        {
+            //var dataReader = DataReader.FromBuffer(args.CharacteristicValue);
+            //byte[] bytesRead = new byte[args.CharacteristicValue.Length];
+            //dataReader.ReadBytes(bytesRead);
+
+            var data = new byte[args.CharacteristicValue.Length];
+            DataReader.FromBuffer(args.CharacteristicValue).ReadBytes(data);
+            //Debug.WriteLine(Encoding.ASCII.GetString(data));
+
+            var dialog = new MessageDialog("Received :" + Encoding.ASCII.GetString(data));
+            Invoke(async () => await dialog.ShowAsync());
+
         }
     }
 
