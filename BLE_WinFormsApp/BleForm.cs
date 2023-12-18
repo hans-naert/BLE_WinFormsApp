@@ -7,6 +7,7 @@ using Windows.Devices.Enumeration;
 using Windows.Storage.Streams;
 using Windows.UI.Core;
 using Windows.UI.Popups;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement.Window;
 
 namespace BLE_WinFormsApp
 {
@@ -123,18 +124,11 @@ namespace BLE_WinFormsApp
         }
 
         private void Characteristic_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
-        {
-            //var dataReader = DataReader.FromBuffer(args.CharacteristicValue);
-            //byte[] bytesRead = new byte[args.CharacteristicValue.Length];
-            //dataReader.ReadBytes(bytesRead);
+        {                        
+            var data = args.CharacteristicValue.ToArray();
+            Debug.WriteLine(Encoding.ASCII.GetString(data));
 
-            var data = new byte[args.CharacteristicValue.Length];
-            DataReader.FromBuffer(args.CharacteristicValue).ReadBytes(data);
-            //Debug.WriteLine(Encoding.ASCII.GetString(data));
-
-            var dialog = new MessageDialog("Received :" + Encoding.ASCII.GetString(data));
-            Invoke(async () => await dialog.ShowAsync());
-
+            this.Invoke(new Action(() => MessageBox.Show("Received :" + Encoding.ASCII.GetString(data))));
         }
     }
 
