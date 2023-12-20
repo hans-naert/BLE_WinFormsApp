@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using Windows.Devices.Bluetooth;
+using Windows.Devices.Bluetooth.Advertisement;
 using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using Windows.Devices.Enumeration;
 using Windows.Storage.Streams;
@@ -13,9 +14,8 @@ namespace BLE_WinFormsApp
 {
     public partial class BleForm : Form
     {
-
+        BluetoothLEAdvertisementWatcher advertisementWatcher;
         DeviceWatcher deviceWatcher;
-        DeviceInformation deviceInformation;
         BluetoothLEDevice bluetoothLeDevice;
         GattDeviceService service;
         GattCharacteristic characteristic;
@@ -55,7 +55,7 @@ namespace BLE_WinFormsApp
         {
             deviceWatcher.Stop();
             // Note: BluetoothLEDevice.FromIdAsync must be called from a UI thread because it may prompt for consent.
-            deviceInformation = ((DeviceInformationListItem)selectedListItem).deviceInformation;
+            var deviceInformation = ((DeviceInformationListItem)selectedListItem).deviceInformation;
             bluetoothLeDevice = await BluetoothLEDevice.FromIdAsync(deviceInformation.Id);
             Debug.WriteLine($"Device connected: {bluetoothLeDevice.Name}");
         }
@@ -72,7 +72,10 @@ namespace BLE_WinFormsApp
 
         private void DeviceWatcher_Added(DeviceWatcher sender, DeviceInformation args)
         {
-            Invoke(() => listBox1.Items.Add(new DeviceInformationListItem(args)));
+            if (args.Name != "")
+            {
+                Invoke(() => listBox1.Items.Add(new DeviceInformationListItem(args)));
+            }
         }
 
         private void listBox1_SelectedIndexChanged(object sender, EventArgs e)
@@ -124,12 +127,60 @@ namespace BLE_WinFormsApp
         }
 
         private void Characteristic_ValueChanged(GattCharacteristic sender, GattValueChangedEventArgs args)
-        {                        
+        {
             var data = args.CharacteristicValue.ToArray();
             Debug.WriteLine(Encoding.ASCII.GetString(data));
 
             this.Invoke(new Action(() => MessageBox.Show("Received :" + Encoding.ASCII.GetString(data))));
         }
+
+        private void ScanFilteredButton_Click(object sender, EventArgs e)
+        {
+            var advertisementFilter = new BluetoothLEAdvertisementFilter();
+            advertisementFilter.Advertisement.LocalName = localNameTextBox.Text;
+            advertisementWatcher = new BluetoothLEAdvertisementWatcher(advertisementFilter);
+            advertisementWatcher.Received += Watcher_Received;
+            advertisementWatcher.Start();
+
+        }
+
+        private void Watcher_Received(BluetoothLEAdvertisementWatcher sender, BluetoothLEAdvertisementReceivedEventArgs args)
+        {
+            if (args.Advertisement.LocalName != "")
+            {                
+                Invoke(() => listBox1.Items.Add(new AdvertisementListItem(args.BluetoothAddress, args.Advertisement)));
+            }
+        }
+
+
+        private async void connectFilteredButton_Click(object sender, EventArgs e)
+        {
+
+            advertisementWatcher.Stop();
+            // Note: BluetoothLEDevice.FromIdAsync must be called from a UI thread because it may prompt for consent.
+            //deviceInformation = ((DeviceInformationListItem)selectedListItem).deviceInformation;
+            bluetoothLeDevice = await BluetoothLEDevice.FromBluetoothAddressAsync(((AdvertisementListItem)selectedListItem).bluetoothAddress);
+            Debug.WriteLine($"Device connected: {bluetoothLeDevice.Name}");
+
+        }
+    }
+
+    public class AdvertisementListItem
+    {
+        public BluetoothLEAdvertisement advertisement;
+        public ulong bluetoothAddress;
+
+        public AdvertisementListItem(ulong bluetoothAddress, BluetoothLEAdvertisement advertisement)
+        {
+            this.advertisement = advertisement;
+            this.bluetoothAddress = bluetoothAddress;
+        }
+
+        public override string ToString()
+        {
+            return $"Name: {advertisement.LocalName} Address:{bluetoothAddress}";
+        }
+
     }
 
     public class DeviceInformationListItem
